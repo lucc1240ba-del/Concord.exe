@@ -1,0 +1,76 @@
+{
+  "name": "concord-desktop",
+  "productName": "Concord",
+  "version": "1.0.0",
+  "description": "Concord — chat estilo Discord, empacotado como aplicativo desktop.",
+  "author": "Concord",
+  "main": "electron/main.js",
+  "private": true,
+  "scripts": {
+    "dev": "serve app -l 5500",
+    "electron:dev": "electron .",
+    "build": "echo 'Sem passo de build — app/index.html já é o frontend final (HTML/CSS/JS únicos, sem bundler).'",
+    "dist": "npm run build && electron-builder --win nsis portable",
+    "dist:linux": "npm run build && electron-builder --linux AppImage",
+    "dist:mac": "npm run build && electron-builder --mac dmg"
+  },
+  "devDependencies": {
+    "electron": "^31.7.7",
+    "electron-builder": "^24.13.3",
+    "serve": "^14.2.4"
+  },
+  "dependencies": {
+    "electron-updater": "^6.3.9"
+  },
+  "build": {
+    "appId": "com.concord.desktop",
+    "productName": "Concord",
+    "copyright": "Concord",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "electron/**/*",
+      "app/**/*",
+      "package.json"
+    ],
+    "extraMetadata": {
+      "main": "electron/main.js"
+    },
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Concord",
+      "artifactName": "${productName} Setup ${version}.${ext}"
+    },
+    "portable": {
+      "artifactName": "${productName} Portable ${version}.${ext}"
+    },
+    "mac": {
+      "target": ["dmg"],
+      "icon": "build/icon.png",
+      "category": "public.app-category.social-networking"
+    },
+    "linux": {
+      "target": ["AppImage"],
+      "icon": "build/icon.png",
+      "category": "Network"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "lucc1240ba-del",
+      "repo": "Concord.exe"
+    }
+  }
+}
