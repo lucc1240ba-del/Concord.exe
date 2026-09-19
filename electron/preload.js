@@ -18,4 +18,6 @@ contextBridge.exposeInMainWorld("concordDesktop", {
   // Pede ao processo principal a lista de telas/janelas disponíveis para
   // compartilhar, com miniatura — usada pelo seletor customizado (estilo Discord).
   getScreenSources: () => ipcRenderer.invoke("get-screen-sources"),
+  checkForUpdates: () => ipcRenderer.invoke("check-for-updates"),
+  quitAndInstall: () => ipcRenderer.send("quit-and-install"),
 });

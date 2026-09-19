@@ -1,5 +1,28 @@
 const { app, BrowserWindow, shell, Menu, ipcMain, desktopCapturer } = require("electron");
 const path = require("path");
+const { autoUpdater } = require("electron-updater");
+
+// ---- Auto-update via GitHub Releases ----
+// Lê `build.publish` do package.json (owner/repo), compara a versão instalada
+// (app.getVersion()) com o `latest.yml` do release mais recente. Se houver uma
+// nova, baixa o instalador em background e reinicia sozinho quando terminar
+// (checkForUpdatesAndNotify no boot) ou quando o usuário clicar no botão de
+// atualizar dentro do app (check-for-updates via IPC).
+autoUpdater.autoDownload = true;
+autoUpdater.autoInstallOnAppQuit = true;
+
+function sendUpdateStatus(payload) {
+  if (mainWindow) mainWindow.webContents.send("concord-update-status", payload);
+}
+autoUpdater.on("checking-for-update", () => sendUpdateStatus({ status: "checking" }));
+autoUpdater.on("update-available", (info) => sendUpdateStatus({ status: "available", version: info.version }));
+autoUpdater.on("update-not-available", () => sendUpdateStatus({ status: "not-available" }));
+autoUpdater.on("download-progress", (p) => sendUpdateStatus({ status: "downloading", percent: Math.round(p.percent) }));
+autoUpdater.on("update-downloaded", (info) => sendUpdateStatus({ status: "downloaded", version: info.version }));
+autoUpdater.on("error", (err) => {
+  console.error("Auto-update error:", err == null ? "unknown" : (err.stack || err).toString());
+  sendUpdateStatus({ status: "error", message: String((err && err.message) || err) });
+});
 
 // Evita segundo processo — clicar no atalho de novo só foca a janela existente
 const singleInstanceLock = app.requestSingleInstanceLock();
@@ -77,27 +100,26 @@ ipcMain.handle("get-screen-sources", async () => {
   }));
 });
 
+// Botão "Verificar atualização" do app: dispara a checagem manualmente.
+// O resultado (disponível / já atualizado / erro) chega pelo mesmo canal
+// "concord-update-status" que o preload já escuta.
+ipcMain.handle("check-for-updates", async () => {
+  try {
+    await autoUpdater.checkForUpdates();
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: String((err && err.message) || err) };
+  }
+});
+
+// Chamado depois que o download termina (update-downloaded) — fecha o app e
+// reabre sozinho já na versão nova, sem o usuário precisar fazer nada.
+ipcMain.on("quit-and-install", () => {
+  autoUpdater.quitAndInstall();
+});
+
 app.whenReady().then(() => {
   createWindow();
-
-  // ---- Auto-update via GitHub Releases ----
-  // Lê `build.publish` do package.json (owner/repo), compara a versão instalada
-  // (app.getVersion()) com o `latest.yml` do release mais recente. Se houver uma
-  // nova, baixa o instalador em background; o usuário só precisa fechar e abrir
-  // o app de novo pra aplicar (ou reiniciar quando o download terminar).
-  const { autoUpdater } = require("electron-updater");
-  autoUpdater.autoDownload = true;
-  autoUpdater.autoInstallOnAppQuit = true;
-
-  autoUpdater.on("update-available", (info) => {
-    if (mainWindow) mainWindow.webContents.send("concord-update-status", { status: "available", version: info.version });
-  });
-  autoUpdater.on("update-downloaded", (info) => {
-    if (mainWindow) mainWindow.webContents.send("concord-update-status", { status: "downloaded", version: info.version });
-  });
-  autoUpdater.on("error", (err) => {
-    console.error("Auto-update error:", err == null ? "unknown" : (err.stack || err).toString());
-  });
 
   autoUpdater.checkForUpdatesAndNotify().catch((err) => {
     console.error("checkForUpdatesAndNotify failed:", err);

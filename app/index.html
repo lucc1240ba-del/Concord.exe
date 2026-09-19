@@ -877,6 +877,17 @@
   .sp-source.locked{ opacity:.5; cursor:not-allowed; }
   .sp-source.locked:hover{ transform:none; }
 
+  .update-btn{ position:relative; }
+  .update-btn.spinning svg{ animation: update-spin 1s linear infinite; }
+  @keyframes update-spin{ to{ transform:rotate(360deg); } }
+  .update-btn.ready{ color:var(--accent-verde); }
+  .update-btn.ready::after{
+    content:""; position:absolute; top:3px; right:3px;
+    width:8px; height:8px; border-radius:50%;
+    background:var(--accent-verde);
+    box-shadow:0 0 0 2px var(--bg-content);
+  }
+
   .toast{
     position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(20px);
     background: var(--bg-elevated); color:var(--text-primary);
@@ -959,6 +970,9 @@
       <h2 id="channelTitle">geral</h2>
       <span class="topic" id="channelTopic"></span>
       <div class="header-actions">
+        <button class="icon-btn update-btn hidden" id="updateBtn" title="Verificar atualização" aria-label="Verificar atualização">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 4V1L8 5l4 4V6a6 6 0 1 1-6 6H4a8 8 0 1 0 8-8z"/></svg>
+        </button>
         <button class="icon-btn" id="toggleMembers" title="Membros" aria-label="Mostrar membros">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M16 11c1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3 1.34 3 3 3zm-8 0c1.66 0 3-1.34 3-3S9.66 5 8 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5C15 14.17 10.33 13 8 13zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
         </button>
@@ -2941,10 +2955,53 @@
     await selectServer(state.servers[0].id);
   }
 
-  if(window.concordDesktop && window.concordDesktop.onUpdateStatus){
-    window.concordDesktop.onUpdateStatus(({ status, version })=>{
-      if(status === "downloaded"){
-        showToast(`Atualização ${version} baixada — feche e abra o Concord de novo pra aplicar`);
+  if(window.concordDesktop && window.concordDesktop.isDesktopApp){
+    const updateBtn = $("#updateBtn");
+    updateBtn.classList.remove("hidden");
+
+    let updateReady = false;
+
+    updateBtn.addEventListener("click", async ()=>{
+      if(updateReady){
+        window.concordDesktop.quitAndInstall();
+        return;
+      }
+      updateBtn.classList.add("spinning");
+      updateBtn.title = "Verificando atualização…";
+      const result = await window.concordDesktop.checkForUpdates();
+      if(!result || !result.ok){
+        updateBtn.classList.remove("spinning");
+        updateBtn.title = "Verificar atualização";
+        showToast("Não foi possível verificar atualização — confira sua conexão");
+      }
+      // se houver atualização, o download começa sozinho (autoDownload) e os
+      // eventos abaixo (onUpdateStatus) cuidam do resto — inclusive reiniciar.
+    });
+
+    window.concordDesktop.onUpdateStatus(({ status, version, percent, message })=>{
+      if(status === "checking"){
+        updateBtn.classList.add("spinning");
+        updateBtn.title = "Verificando atualização…";
+      }else if(status === "not-available"){
+        updateBtn.classList.remove("spinning");
+        updateBtn.title = "Verificar atualização";
+        showToast("O Concord já está na versão mais recente");
+      }else if(status === "available"){
+        updateBtn.title = `Baixando atualização ${version}…`;
+      }else if(status === "downloading"){
+        updateBtn.classList.add("spinning");
+        updateBtn.title = `Baixando atualização… ${percent || 0}%`;
+      }else if(status === "downloaded"){
+        updateBtn.classList.remove("spinning");
+        updateBtn.classList.add("ready");
+        updateBtn.title = `Atualização ${version} pronta — clique pra reiniciar`;
+        updateReady = true;
+        showToast(`Atualização ${version} baixada — reiniciando o Concord…`);
+        setTimeout(()=> window.concordDesktop.quitAndInstall(), 2500);
+      }else if(status === "error"){
+        updateBtn.classList.remove("spinning");
+        updateBtn.title = "Verificar atualização";
+        showToast("Erro ao verificar atualização: " + (message || "desconhecido"));
       }
     });
   }
