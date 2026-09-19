@@ -1,7 +1,7 @@
 {
   "name": "concord-desktop",
   "productName": "Concord",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Concord — chat estilo Discord, empacotado como aplicativo desktop.",
   "author": "Concord",
   "main": "electron/main.js",
@@ -40,8 +40,18 @@
     },
     "win": {
       "target": [
-        { "target": "nsis", "arch": ["x64"] },
-        { "target": "portable", "arch": ["x64"] }
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "icon": "build/icon.ico"
     },
@@ -58,12 +68,16 @@
       "artifactName": "${productName} Portable ${version}.${ext}"
     },
     "mac": {
-      "target": ["dmg"],
+      "target": [
+        "dmg"
+      ],
       "icon": "build/icon.png",
       "category": "public.app-category.social-networking"
     },
     "linux": {
-      "target": ["AppImage"],
+      "target": [
+        "AppImage"
+      ],
       "icon": "build/icon.png",
       "category": "Network"
     },

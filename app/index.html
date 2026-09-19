@@ -835,6 +835,48 @@
   }
   .vs-leave:hover{ background: var(--danger-soft); color: var(--danger); }
 
+  .screen-picker-modal{ width:560px; max-height:80vh; display:flex; flex-direction:column; }
+  .sp-tabs{ display:flex; gap:var(--sp-2); margin-bottom:var(--sp-3); }
+  .sp-tab{
+    padding:6px 14px; border-radius:var(--radius-sm);
+    font-size:13px; font-weight:600; color:var(--text-secondary);
+    background:var(--bg-input);
+    transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+  }
+  .sp-tab:hover{ color:var(--text-primary); }
+  .sp-tab.active{ background:var(--accent-azul); color:#fff; }
+  .sp-grid{
+    display:grid; grid-template-columns:repeat(3, 1fr); gap:var(--sp-3);
+    max-height:280px; overflow-y:auto; padding:2px;
+    margin-bottom:var(--sp-4);
+  }
+  .sp-loading{ grid-column:1/-1; text-align:center; color:var(--text-muted); padding:var(--sp-6) 0; }
+  .sp-source{
+    border-radius:var(--radius-md); overflow:hidden; cursor:pointer;
+    border:2px solid transparent; background:var(--bg-input);
+    transition: border-color var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
+  }
+  .sp-source:hover{ transform:translateY(-2px); }
+  .sp-source.selected{ border-color:var(--accent-verde); }
+  .sp-source .sp-thumb{
+    width:100%; aspect-ratio:16/9; object-fit:cover; background:#000; display:block;
+  }
+  .sp-source .sp-name{
+    font-size:11.5px; padding:6px 8px; color:var(--text-secondary);
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    display:flex; align-items:center; gap:5px;
+  }
+  .sp-source .sp-name img{ width:14px; height:14px; border-radius:3px; flex-shrink:0; }
+  .sp-source.selected .sp-name{ color:var(--text-primary); }
+  .sp-options{ border-top:1px solid var(--border-soft); padding-top:var(--sp-4); margin-bottom:var(--sp-4); }
+  .sp-check{ display:flex; align-items:center; gap:8px; font-size:13.5px; color:var(--text-secondary); margin-bottom:var(--sp-3); cursor:pointer; }
+  .sp-check input{ width:16px; height:16px; accent-color:var(--accent-verde); }
+  .sp-res-row{ display:flex; align-items:center; justify-content:space-between; gap:var(--sp-3); }
+  .sp-res-label{ font-size:13.5px; color:var(--text-primary); font-weight:500; }
+  #spResolution{ max-width:180px; }
+  .sp-source.locked{ opacity:.5; cursor:not-allowed; }
+  .sp-source.locked:hover{ transform:none; }
+
   .toast{
     position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(20px);
     background: var(--bg-elevated); color:var(--text-primary);
@@ -1092,6 +1134,42 @@
     <div class="modal-actions">
       <button class="btn ghost" id="cancelProfileEdit">Cancelar</button>
       <button class="btn primary" id="saveProfileBtn">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="screenPickerBackdrop">
+  <div class="modal screen-picker-modal" id="screenPickerModal">
+    <h3>Compartilhar sua tela</h3>
+    <p class="sub">Escolha o que compartilhar com quem está na call.</p>
+
+    <div class="sp-tabs">
+      <button class="sp-tab active" data-tab="screen" type="button">Telas</button>
+      <button class="sp-tab" data-tab="window" type="button">Janelas</button>
+    </div>
+    <div class="sp-grid" id="screenPickerGrid">
+      <div class="sp-loading">Carregando…</div>
+    </div>
+
+    <div class="sp-options">
+      <label class="sp-check" id="spAudioRow">
+        <input type="checkbox" id="spAudioCheck" checked />
+        <span>Compartilhar áudio do sistema</span>
+      </label>
+      <div class="sp-res-row">
+        <span class="sp-res-label">Resolução</span>
+        <select id="spResolution" class="settings-select">
+          <option value="720">720p</option>
+          <option value="1080" selected>1080p</option>
+          <option value="1440">1440p ⚡ Boost</option>
+          <option value="2160">4K ⚡ Boost</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn ghost" id="screenPickerCancel">Cancelar</button>
+      <button class="btn primary" id="screenPickerConfirm" disabled>Compartilhar</button>
     </div>
   </div>
 </div>
@@ -1988,7 +2066,7 @@
         audioEl.setSinkId(state.selectedSpeakerId).catch(()=>{});
       }
     }
-    audioEl.muted = state.deafened;
+    audioEl.muted = state.deafened || (screenShareMutedCallAudio && !key.endsWith("::screen"));
     audioEl.srcObject = stream;
     audioEl.play().catch(()=> primeAudioUnlock());
   }
@@ -2084,7 +2162,9 @@
   function setDeafened(deafened){
     state.deafened = deafened;
     $("#deafenToggle").classList.toggle("off", deafened);
-    Object.values(remoteAudioEls).forEach(el=> el.muted = deafened);
+    Object.entries(remoteAudioEls).forEach(([key, el])=>{
+      el.muted = deafened || (screenShareMutedCallAudio && !key.endsWith("::screen"));
+    });
     if(deafened && !state.micMuted) setMicMuted(true);
     syncStatusText();
   }
@@ -2101,31 +2181,185 @@
     showToast(camOn ? "Câmera ativada (prévia local)" : "Câmera desativada");
   }
 
-  /* ---- compartilhamento de tela: captura local + transmissão via WebRTC (com áudio) ---- */
+  const RESOLUTIONS = {
+    "720":  { width:1280, height:720,  boostOnly:false },
+    "1080": { width:1920, height:1080, boostOnly:false },
+    "1440": { width:2560, height:1440, boostOnly:true },
+    "2160": { width:3840, height:2160, boostOnly:true }
+  };
+  let screenShareMutedCallAudio = false;
+  let screenPickerSources = [];
+  let screenPickerSelected = null;
+  let screenPickerTab = "screen";
+
+  /* ---- compartilhamento de tela: no app desktop abre o seletor próprio
+     (estilo Discord); no navegador comum usa o picker nativo do sistema ---- */
   async function toggleScreenShare(){
     if(state.screenSharing){ stopScreenShare(); return; }
+
+    if(window.concordDesktop && window.concordDesktop.isDesktopApp){
+      openScreenPicker();
+      return;
+    }
+
     if(!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia){
       showToast("Seu navegador não suporta compartilhamento de tela");
       return;
     }
     try{
       const stream = await navigator.mediaDevices.getDisplayMedia({ video:true, audio:true });
-      state.screenStream = stream;
-      state.screenSharing = true;
-      $("#callShare").classList.add("on");
-      addLocalScreenTile(stream);
-
-      Object.values(connections).forEach(pc=>{
-        stream.getTracks().forEach(t=> pc.addTrack(t, stream));
-      });
-      stream.getVideoTracks()[0].addEventListener("ended", stopScreenShare);
-      renderChannelSidebar();
-      showToast(stream.getAudioTracks().length
-        ? "Compartilhando tela e áudio para quem está na call"
-        : "Compartilhando sua tela (sem áudio — não marcado/suportado)");
+      const settings = stream.getVideoTracks()[0].getSettings ? stream.getVideoTracks()[0].getSettings() : {};
+      beginScreenShare(stream, { isFullScreen: settings.displaySurface === "monitor" });
     }catch(err){
       showToast("Compartilhamento cancelado");
     }
+  }
+
+  /* ---- seletor customizado (app desktop) ---- */
+  async function openScreenPicker(){
+    const backdrop = $("#screenPickerBackdrop");
+    backdrop.classList.add("open");
+    gsap.set(backdrop, {opacity:0});
+    gsap.set("#screenPickerModal", {scale:.92, opacity:0});
+    gsap.to(backdrop, {opacity:1, duration:.2*D, ease:"power2.out"});
+    gsap.to("#screenPickerModal", {scale:1, opacity:1, duration:.25*D, ease:"power2.out"});
+
+    screenPickerSelected = null;
+    screenPickerTab = "screen";
+    $$(".sp-tab").forEach(t=> t.classList.toggle("active", t.dataset.tab === "screen"));
+    $("#screenPickerConfirm").disabled = true;
+    $("#screenPickerGrid").innerHTML = '<div class="sp-loading">Carregando…</div>';
+    syncResolutionOptions();
+
+    try{
+      screenPickerSources = await window.concordDesktop.getScreenSources();
+    }catch(err){
+      showToast("Não foi possível listar telas/janelas");
+      closeScreenPicker();
+      return;
+    }
+    renderScreenPickerGrid();
+  }
+  function closeScreenPicker(){
+    gsap.to("#screenPickerModal", {scale:.92, opacity:0, duration:.18*D, ease:"power2.out"});
+    gsap.to("#screenPickerBackdrop", {opacity:0, duration:.18*D, ease:"power2.out", onComplete:()=>{
+      $("#screenPickerBackdrop").classList.remove("open");
+    }});
+  }
+  function renderScreenPickerGrid(){
+    const grid = $("#screenPickerGrid");
+    const list = screenPickerSources.filter(s=> s.type === screenPickerTab);
+    if(list.length === 0){
+      grid.innerHTML = '<div class="sp-loading">Nada encontrado</div>';
+      return;
+    }
+    grid.innerHTML = list.map(s => `
+      <div class="sp-source" data-id="${escapeAttr(s.id)}">
+        <img class="sp-thumb" src="${s.thumbnail || ""}" alt="" />
+        <div class="sp-name">${s.appIcon ? `<img src="${escapeAttr(s.appIcon)}" alt="" />` : ""}${escapeHtml(s.name || (s.type === "screen" ? "Tela" : "Janela"))}</div>
+      </div>
+    `).join("");
+    grid.querySelectorAll(".sp-source").forEach(el=>{
+      el.addEventListener("click", ()=>{
+        grid.querySelectorAll(".sp-source").forEach(x=> x.classList.remove("selected"));
+        el.classList.add("selected");
+        screenPickerSelected = list.find(s=> s.id === el.dataset.id);
+        $("#screenPickerConfirm").disabled = false;
+        syncAudioAvailability();
+      });
+    });
+  }
+  function syncAudioAvailability(){
+    // Compartilhar áudio do sistema só existe pra "tela inteira" — capturar o áudio
+    // de uma janela específica não é suportado pelo Windows/Electron.
+    const isScreen = screenPickerSelected && screenPickerSelected.type === "screen";
+    $("#spAudioRow").classList.toggle("hidden", !isScreen);
+    $("#spAudioCheck").checked = isScreen;
+  }
+  function syncResolutionOptions(){
+    const boosted = isBoosted(state.username);
+    $$("#spResolution option").forEach(opt=>{
+      opt.disabled = RESOLUTIONS[opt.value].boostOnly && !boosted;
+    });
+    if(!boosted) $("#spResolution").value = "1080";
+  }
+  $("#spResolution").addEventListener("change", e=>{
+    const res = RESOLUTIONS[e.target.value];
+    if(res.boostOnly && !isBoosted(state.username)){
+      e.target.value = "1080";
+      showToast("Resolução 1440p+ é exclusiva do Concord Boost ⚡");
+    }
+  });
+  $$(".sp-tab").forEach(tab=>{
+    tab.addEventListener("click", ()=>{
+      screenPickerTab = tab.dataset.tab;
+      $$(".sp-tab").forEach(t=> t.classList.toggle("active", t === tab));
+      screenPickerSelected = null;
+      $("#screenPickerConfirm").disabled = true;
+      renderScreenPickerGrid();
+    });
+  });
+  $("#screenPickerCancel").addEventListener("click", closeScreenPicker);
+  $("#screenPickerBackdrop").addEventListener("click", e=>{ if(e.target.id === "screenPickerBackdrop") closeScreenPicker(); });
+  $("#screenPickerConfirm").addEventListener("click", async ()=>{
+    if(!screenPickerSelected) return;
+    const res = RESOLUTIONS[$("#spResolution").value];
+    if(res.boostOnly && !isBoosted(state.username)){
+      showToast("Resolução 1440p+ é exclusiva do Concord Boost ⚡");
+      return;
+    }
+    const wantAudio = screenPickerSelected.type === "screen" && $("#spAudioCheck").checked;
+    const isFullScreen = screenPickerSelected.type === "screen";
+    closeScreenPicker();
+    try{
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: wantAudio ? { mandatory: { chromeMediaSource: "desktop" } } : false,
+        video: {
+          mandatory: {
+            chromeMediaSource: "desktop",
+            chromeMediaSourceId: screenPickerSelected.id,
+            minWidth: res.width, maxWidth: res.width,
+            minHeight: res.height, maxHeight: res.height,
+            maxFrameRate: 30
+          }
+        }
+      });
+      beginScreenShare(stream, { isFullScreen });
+    }catch(err){
+      console.error(err);
+      showToast("Não foi possível iniciar o compartilhamento");
+    }
+  });
+
+  function beginScreenShare(stream, { isFullScreen }){
+    state.screenStream = stream;
+    state.screenSharing = true;
+    $("#callShare").classList.add("on");
+    addLocalScreenTile(stream);
+
+    Object.values(connections).forEach(pc=>{
+      stream.getTracks().forEach(t=> pc.addTrack(t, stream));
+    });
+    const videoTrack = stream.getVideoTracks()[0];
+    if(videoTrack) videoTrack.addEventListener("ended", stopScreenShare);
+
+    const hasAudio = stream.getAudioTracks().length > 0;
+    screenShareMutedCallAudio = false;
+    if(isFullScreen && hasAudio){
+      // Evita o eco: se sua própria reprodução da call estivesse tocando nos seus
+      // alto-falantes, o compartilhamento de tela inteira com áudio a recaptura e
+      // reenvia pra todo mundo — cada pessoa acaba ouvindo a própria voz de volta.
+      // Enquanto durar esse tipo de compartilhamento, só a SUA reprodução local da
+      // call fica muda; seu microfone continua normal e os outros te ouvem certo.
+      Object.keys(remoteAudioEls).forEach(key=>{
+        if(!key.endsWith("::screen")) remoteAudioEls[key].muted = true;
+      });
+      screenShareMutedCallAudio = true;
+      showToast("Compartilhando tela inteira com áudio — sua reprodução da call foi silenciada pra evitar eco");
+    }else{
+      showToast(hasAudio ? "Compartilhando tela e áudio para quem está na call" : "Compartilhando sua tela");
+    }
+    renderChannelSidebar();
   }
 
   function addLocalScreenTile(stream){
@@ -2159,6 +2393,14 @@
     $("#callShare").classList.remove("on");
     const tile = $("#tile-screen");
     if(tile) tile.remove();
+
+    if(screenShareMutedCallAudio){
+      Object.keys(remoteAudioEls).forEach(key=>{
+        if(!key.endsWith("::screen")) remoteAudioEls[key].muted = state.deafened;
+      });
+      screenShareMutedCallAudio = false;
+    }
+
     if(state.inCall) renderChannelSidebar();
   }
 

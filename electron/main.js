@@ -1,4 +1,4 @@
-const { app, BrowserWindow, shell, Menu } = require("electron");
+const { app, BrowserWindow, shell, Menu, ipcMain, desktopCapturer } = require("electron");
 const path = require("path");
 
 // Evita segundo processo — clicar no atalho de novo só foca a janela existente
@@ -56,6 +56,25 @@ app.on("second-instance", () => {
     if (mainWindow.isMinimized()) mainWindow.restore();
     mainWindow.focus();
   }
+});
+
+// Lista telas e janelas abertas com miniatura, pro app desenhar seu próprio seletor
+// de compartilhamento (estilo Discord) em vez do picker genérico do navegador.
+// Só devolve o que é necessário pra montar a grade (id, nome, thumbnail em base64);
+// nunca expõe o objeto bruto do desktopCapturer nem qualquer API do Node ao renderer.
+ipcMain.handle("get-screen-sources", async () => {
+  const sources = await desktopCapturer.getSources({
+    types: ["screen", "window"],
+    thumbnailSize: { width: 320, height: 180 },
+    fetchWindowIcons: true,
+  });
+  return sources.map((s) => ({
+    id: s.id,
+    name: s.name,
+    type: s.id.startsWith("screen:") ? "screen" : "window",
+    thumbnail: s.thumbnail.isEmpty() ? null : s.thumbnail.toDataURL(),
+    appIcon: s.appIcon && !s.appIcon.isEmpty() ? s.appIcon.toDataURL() : null,
+  }));
 });
 
 app.whenReady().then(() => {
