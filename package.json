@@ -1,7 +1,7 @@
 {
   "name": "concord-desktop",
   "productName": "Concord",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Concord — chat estilo Discord, empacotado como aplicativo desktop.",
   "author": "Concord",
   "main": "electron/main.js",

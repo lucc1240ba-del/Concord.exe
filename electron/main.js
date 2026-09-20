@@ -1,6 +1,13 @@
-const { app, BrowserWindow, shell, Menu, ipcMain, desktopCapturer } = require("electron");
+const { app, BrowserWindow, shell, Menu, ipcMain, desktopCapturer, session } = require("electron");
 const path = require("path");
 const { autoUpdater } = require("electron-updater");
+
+// Sem isso, o Chromium dentro do Electron bloqueia qualquer <audio> de tocar
+// sozinho até a pessoa clicar em algo na janela — é exatamente isso que fazia
+// parecer que "ninguém tem áudio" na call assim que você entrava: a voz dos
+// outros chegava certinha, só não tocava. Como o Concord não é um site
+// qualquer (é a nossa própria janela), é seguro liberar isso de vez.
+app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
 
 // ---- Auto-update via GitHub Releases ----
 // Lê `build.publish` do package.json (owner/repo), compara a versão instalada
@@ -119,6 +126,12 @@ ipcMain.on("quit-and-install", () => {
 });
 
 app.whenReady().then(() => {
+  const allowedPermissions = ["media", "display-capture"];
+  session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => {
+    callback(allowedPermissions.includes(permission));
+  });
+  session.defaultSession.setPermissionCheckHandler((_wc, permission) => allowedPermissions.includes(permission));
+
   createWindow();
 
   autoUpdater.checkForUpdatesAndNotify().catch((err) => {
