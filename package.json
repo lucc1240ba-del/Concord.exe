@@ -1,7 +1,7 @@
 {
   "name": "concord-desktop",
   "productName": "Concord",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Concord — chat estilo Discord, empacotado como aplicativo desktop.",
   "author": "Concord",
   "main": "electron/main.js",
@@ -62,10 +62,10 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Concord",
-      "artifactName": "${productName} Setup ${version}.${ext}"
+      "artifactName": "${productName}-Setup-${version}.${ext}"
     },
     "portable": {
-      "artifactName": "${productName} Portable ${version}.${ext}"
+      "artifactName": "${productName}-Portable-${version}.${ext}"
     },
     "mac": {
       "target": [
