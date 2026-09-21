@@ -1203,6 +1203,7 @@
   const SUPABASE_KEY = "sb_publishable_Jjd3te38Rl3sHM7wQxYW8g_Y3q8CyRT";
   const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
   let msgChannelSub = null;
+  let memberChannelSub = null;
 
   const ACCENTS = {
     verde:  { hex:"#17a866", var:"--accent-verde" },
@@ -1364,7 +1365,11 @@
     const { data, error } = await sb.from("server_members").select("member_name").eq("server_id", serverId);
     if(error){ console.error(error); return [state.username]; }
     const names = data.map(m=>m.member_name);
-    if(!names.includes(state.username)) names.unshift(state.username);
+    if(!names.includes(state.username)){
+      names.unshift(state.username);
+      sb.from("server_members").insert({ server_id: serverId, member_name: state.username })
+        .then(({ error })=>{ if(error && error.code !== "23505") console.error(error); });
+    }
     return names;
   }
   async function fetchMessages(channelId){
@@ -1409,6 +1414,7 @@
     renderChannelSidebar();
     await renderChatView();
     renderMemberList();
+    subscribeToMembers(id);
     if(isNew){
       const btn = $$("#serverIcons .rail-btn").pop();
       if(btn) gsap.fromTo(btn, {scale:.4, opacity:0}, {scale:1, opacity:1, duration:.35*D, ease:"power2.out"});
@@ -1809,6 +1815,19 @@
     if(error){ showToast("Não foi possível enviar a mensagem"); console.error(error); }
   }
 
+  function subscribeToMembers(serverId){
+    if(memberChannelSub){ sb.removeChannel(memberChannelSub); memberChannelSub = null; }
+    memberChannelSub = sb.channel("members-" + serverId)
+      .on("postgres_changes", { event:"INSERT", schema:"public", table:"server_members", filter:`server_id=eq.${serverId}` }, payload=>{
+        if(state.currentServerId !== serverId) return;
+        if(!state.members.includes(payload.new.member_name)){
+          state.members.push(payload.new.member_name);
+          renderMemberList();
+        }
+      })
+      .subscribe();
+  }
+
   /* ============ RENDER: MEMBER LIST ============ */
   async function renderMemberList(){
     await getProfiles(state.members);
@@ -1816,7 +1835,7 @@
     wrap.innerHTML = "";
     const online = document.createElement("div");
     online.className = "group-label";
-    online.textContent = `Online — ${state.members.length}`;
+    online.textContent = `Membros — ${state.members.length}`;
     wrap.appendChild(online);
     state.members.forEach(name=>{
       const row = document.createElement("div");
